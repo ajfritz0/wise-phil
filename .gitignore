@@ -1,0 +1,4 @@
+cfg/
+node_modules/
+tests
+databases/
