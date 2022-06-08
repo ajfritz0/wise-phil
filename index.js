@@ -7,19 +7,16 @@ const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_
 const eventFiles = fs.readdirSync('./events').filter(file => file.endsWith('.js'));
 
 for (const file of eventFiles) {
+	const eventName = file.slice(0, -3);
+
 	console.log(`Loading Event Module ${file}`);
-	require(`./events/${file}`)(client);
+	const cb = require(`./events/${file}`);
+
+	client.on(eventName, cb);
 }
 
 client.once('ready', () => {
 	console.log('Ready!');
-});
-
-client.on('interactionCreate', async interaction => {
-	const time = new Date().toDateString();
-	console.log(`[${time}] Logged Interaction`);
-	console.log(interaction);
-	console.log('==========');
 });
 
 client.login(token);
