@@ -1,8 +1,8 @@
-const { Client, Intents } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const { token } = require('./cfg/config.json');
 const fs = require('fs');
 
-const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
 const eventFiles = fs.readdirSync('./events').filter(file => file.endsWith('.js'));
 
@@ -14,6 +14,11 @@ for (const file of eventFiles) {
 
 	client.on(eventName, cb);
 }
+
+client._mChain = null;
+require('./src/markovChainInit')
+	.then(chain => client._mChain = chain)
+	.catch(err => console.log(err));
 
 client.once('ready', () => {
 	console.log('Ready!');

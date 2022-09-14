@@ -1,67 +1,59 @@
-const { MarkovChain } = require('../lib/Markov');
-const Graph = require('../lib//Graph');
-const pg = require('pg');
+const { readFile, writeFile } = require('fs/promises');
+const channelIgnoreList = [];
+const ignoreFile = './cfg/channelIgnoreList';
 
-const channelIgnoreList = ['admin-only', 'dev'];
-let chain = null;
-
-const PostgresConfig = {
-	user: process.env.DBUSER,
-	password: process.env.DBPASSWD,
-	host: process.env.DBHOST,
-	database: process.env.DBNAME,
-	port: process.env.DBPORT,
-};
-
-const postgresClient = new pg.Client(PostgresConfig);
-postgresClient.on('notice', (msg) => console.warn('notice: ', msg));
-postgresClient.on('error', (err) => console.error('Server error: ', err));
-
-let building = true;
-
-(async () => {
-	try {
-		const graph = new Graph();
-		await postgresClient.connect();
-		const data = [];
-		data.push(await postgresClient.query('SELECT id, node_value FROM node'));
-		data.push(await postgresClient.query('SELECT id, edge_weight, p_id, c_id FROM edge'));
-
-		const nodes = data[0].rows.reduce((acc, val) => {
-			acc.set(val.id, val.node_value);
-			return acc;
-		}, new Map());
-
-		const edges = data[1].rows;
-		for (let i = 0; i < edges.length; i++) {
-			const edge = edges[i];
-			graph.addEdge(nodes.get(edge.p_id), nodes.get(edge.c_id), edge.edge_weight);
+readFile(ignoreFile, { encoding: 'utf8' })
+	.then((body) => {
+		channelIgnoreList.push(...(body.split('\n').map(x => x.split('|')[0])));
+	})
+	.catch(err => {
+		if (err.code == 'ENOENT') {
+			writeFile(ignoreFile, '', { encoding: 'utf8' });
 		}
+		else {
+			console.error(`Error reading channelIgnoreFile\n${err}`);
+		}
+	});
 
-		chain = new MarkovChain(graph);
-		console.log('Consensus Achieved!');
-	}
-	catch (error) {
-		console.error(error);
-		chain = new MarkovChain();
-	}
-
-	building = false;
-})();
+const addToIgnoreList = (key) => {
+	channelIgnoreList.push(key);
+	writeFile(ignoreFile, channelIgnoreList.join('\n'), { encoding: 'utf8' });
+};
 
 module.exports = async (message) => {
 	if (message.author.bot) return;
-	if (building) return message.channel.send('We are still building a consensus');
-	const chanName = message.channel.name;
+	if (message.client._mChain === null) return;
+
+	const chanId = message.channelId;
 	const botID = message.client.user.id;
 	const userMentions = message.mentions.users;
+	const chain = message.client._mChain;
 
+	// if the message mentions this bot, return a phrase
 	if (userMentions.has(botID)) {
 		return message.channel.send(chain.getPhrase());
 	}
 
-	if (!channelIgnoreList.includes(chanName)) {
+	// if the message starts with the !ignore command, at the channel to the ignore list
+	if (message.content.startsWith('!ignore')) {
+		const ident = `${chanId}|${message.channel.name}`;
+		addToIgnoreList(ident);
+	}
+
+	// if the message was generic, add the phrase to the chain and store in the database
+	if (!channelIgnoreList.includes(chanId)) {
+		console.log(message.content);
 		const data = chain.tokenize(message.content);
 		chain.addTokenizedData(data);
+		chain.save(
+			message.content,
+			message.createdTimestamp,
+			message.author.id,
+			chanId,
+			message.guildId,
+			message.author.username,
+			message.channel.name,
+			message.guild.name,
+		);
 	}
 };
