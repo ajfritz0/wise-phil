@@ -13,10 +13,12 @@ const pgPool = new pg.Pool(pgConfig);
 pgPool.on('error', (err) => {
 	console.error(err);
 });
+const time = () => (new Date()).getTime();
 
 class MarkovChainManager extends MarkovChain {
 	constructor() {
 		super();
+		this.ready = false;
 	}
 
 	// needs to save the message content, author + id, channel + id, guild + id, and date created
@@ -35,6 +37,24 @@ class MarkovChainManager extends MarkovChain {
 			console.log('QUERY FINISHED\n');
 			console.log(rows);
 		}).catch(console.error);
+	}
+
+	async load() {
+		try {
+			console.log('Starting chain build');
+			const start = time();
+			const data = await pgPool.query('SELECT text_body FROM phrases');
+			console.log('Retrieved %d rows', data.rows.length);
+			for (const row of data.rows) {
+				const tokens = this.tokenize(row.text_body);
+				this.addTokenizedData(tokens);
+			}
+			console.log(`Chain build completed in ${time() - start}ms`);
+		}
+		catch (err) {
+			console.error(err);
+		}
+		this.ready = true;
 	}
 }
 
