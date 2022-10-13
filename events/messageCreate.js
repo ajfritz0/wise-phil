@@ -53,10 +53,10 @@ module.exports = async (message) => {
 			message.content,
 			message.createdTimestamp,
 			message.author.id,
-			chanId,
-			message.guildId,
 			message.author.username,
+			chanId,
 			message.channel.name,
+			message.guildId,
 			message.guild.name,
 		);
 	}

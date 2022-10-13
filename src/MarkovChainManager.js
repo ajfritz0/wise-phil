@@ -33,28 +33,37 @@ class MarkovChainManager extends MarkovChain {
 		pgPool.query(
 			'INSERT INTO phrases (text_body, author_name, channel_name, guild_name, author_id, channel_id, guild_id, date_created) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
 			[content, authorName, channelName, guildName, authorId, channelId, guildId, dateString],
-		).then(rows => {
+		).then(() => {
 			console.log('QUERY FINISHED\n');
-			console.log(rows);
 		}).catch(console.error);
 	}
 
 	async load() {
-		try {
-			console.log('Starting chain build');
-			const start = time();
-			const data = await pgPool.query('SELECT text_body FROM phrases');
-			console.log('Retrieved %d rows', data.rows.length);
-			for (const row of data.rows) {
-				const tokens = this.tokenize(row.text_body);
-				this.addTokenizedData(tokens);
-			}
-			console.log(`Chain build completed in ${time() - start}ms`);
-		}
-		catch (err) {
-			console.error(err);
-		}
-		this.ready = true;
+		console.log('Starting chain build');
+		const start = time();
+		pgPool.query('SELECT text_body FROM phrases')
+			.then(res => {
+				const rows = res.rows;
+				let errorCount = 0;
+				console.log('Retrieved %d rows', rows.length);
+				for (const row of rows) {
+					try {
+						const tokens = this.tokenize(row.text_body);
+						this.addTokenizedData(tokens);
+					}
+					catch (e) {
+						errorCount += 1;
+					}
+				}
+				console.log('Chain build complete in %d ms', time() - start);
+				console.log('%d malformed entries detected', errorCount);
+			})
+			.catch(error => {
+				console.error(error);
+			})
+			.finally(() => {
+				this.ready = true;
+			});
 	}
 }
 
