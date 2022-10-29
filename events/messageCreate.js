@@ -47,17 +47,22 @@ module.exports = async (message) => {
 	// if the message was generic, add the phrase to the chain and store in the database
 	if (channelIgnoreList[chanId] === null || channelIgnoreList[chanId] === undefined) {
 		console.log(message.content);
-		const data = chain.tokenize(message.content, true);
-		chain.addTokenizedData(data);
-		chain.save(
-			message.content,
-			message.createdTimestamp,
-			message.author.id,
-			message.author.username,
-			chanId,
-			message.channel.name,
-			message.guildId,
-			message.guild.name,
-		);
+		try {
+			const data = chain.tokenize(message.content, true);
+			chain.addTokenizedData(data);
+			chain.save(
+				message.content,
+				message.createdTimestamp,
+				message.author.id,
+				message.author.username,
+				chanId,
+				message.channel.name,
+				message.guildId,
+				message.guild.name,
+			);
+		}
+		catch (e) {
+			console.error(e, '-----\n', message.content + '\n', '-----\n');
+		}
 	}
 };
