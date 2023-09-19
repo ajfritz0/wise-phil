@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const { token } = require('./cfg/config.json');
 const fs = require('fs');
@@ -22,5 +23,7 @@ client._chain.load();
 client.once('ready', () => {
 	console.log('Ready!');
 });
+
+client.on('error', console.error);
 
 client.login(token);
