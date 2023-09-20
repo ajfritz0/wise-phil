@@ -1,67 +1,69 @@
-const { MarkovChain } = require('../lib/Markov');
-const Graph = require('../lib//Graph');
-const pg = require('pg');
+const { writeFile } = require('fs/promises');
+const { readFileSync } = require('node:fs');
+const ignoreFile = 'cfg/channelIgnoreList.json';
+// eslint-disable-next-line no-unused-vars
+const { PermissionsBitField, Message } = require('discord.js');
+const ignoreList = JSON.parse(readFileSync(ignoreFile, { encoding: 'utf8' }));
 
-const channelIgnoreList = ['admin-only', 'dev'];
-let chain = null;
-
-const PostgresConfig = {
-	user: process.env.DBUSER,
-	password: process.env.DBPASSWD,
-	host: process.env.DBHOST,
-	database: process.env.DBNAME,
-	port: process.env.DBPORT,
+const commands = {
+	help: require('../commands/help'),
+	ignore: require('../commands/ignore'),
+	listen: require('../commands/listen'),
+	status: require('../commands/status'),
 };
 
-const postgresClient = new pg.Client(PostgresConfig);
-postgresClient.on('notice', (msg) => console.warn('notice: ', msg));
-postgresClient.on('error', (err) => console.error('Server error: ', err));
+const saveIgnoreList = () => {
+	writeFile(ignoreFile, JSON.stringify(ignoreList), 'utf8')
+		.then(() => console.log(`Write to ${ignoreFile} complete`))
+		.catch(console.error);
+};
 
-let building = true;
+if (ignoreList.channels === undefined) ignoreList.channels = [];
+if (ignoreList.roles === undefined) ignoreList.roles = [];
 
-(async () => {
-	try {
-		const graph = new Graph();
-		await postgresClient.connect();
-		const data = [];
-		data.push(await postgresClient.query('SELECT id, node_value FROM node'));
-		data.push(await postgresClient.query('SELECT id, edge_weight, p_id, c_id FROM edge'));
-
-		const nodes = data[0].rows.reduce((acc, val) => {
-			acc.set(val.id, val.node_value);
-			return acc;
-		}, new Map());
-
-		const edges = data[1].rows;
-		for (let i = 0; i < edges.length; i++) {
-			const edge = edges[i];
-			graph.addEdge(nodes.get(edge.p_id), nodes.get(edge.c_id), edge.edge_weight);
-		}
-
-		chain = new MarkovChain(graph);
-		console.log('Consensus Achieved!');
-	}
-	catch (error) {
-		console.error(error);
-		chain = new MarkovChain();
-	}
-
-	building = false;
-})();
-
+/**
+ * @param {Message} message
+ */
 module.exports = async (message) => {
-	if (message.author.bot) return;
-	if (building) return message.channel.send('We are still building a consensus');
-	const chanName = message.channel.name;
+	if (message.author.bot || !message.client._chain.ready || message.guild === null) return;
+
+	const chanId = message.channelId;
 	const botID = message.client.user.id;
 	const userMentions = message.mentions.users;
+	const chain = message.client._chain;
 
+	if (message.content.startsWith('!') && message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+		const cmd = message.content.split(' ')[0].slice(1);
+		if (commands[cmd] !== undefined) {
+			commands[cmd](message, ignoreList);
+			saveIgnoreList();
+			return;
+		}
+	}
+
+	// if the message mentions this bot, return a phrase
 	if (userMentions.has(botID)) {
 		return message.channel.send(chain.getPhrase());
 	}
 
-	if (!channelIgnoreList.includes(chanName)) {
-		const data = chain.tokenize(message.content);
+	const memberRoles = message.member.roles.cache;
+	if (memberRoles.hasAny(...ignoreList.roles) || ignoreList.channels.includes(chanId)) return;
+
+	try {
+		const data = chain.tokenize(message.content, true);
 		chain.addTokenizedData(data);
+		chain.save(
+			message.content,
+			message.createdTimestamp,
+			message.author.id,
+			message.author.username,
+			chanId,
+			message.channel.name,
+			message.guildId,
+			message.guild.name,
+		);
+	}
+	catch (e) {
+		console.error(e, '-----\n', message.content + '\n', '-----\n');
 	}
 };
